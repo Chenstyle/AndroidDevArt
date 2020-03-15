@@ -3,3 +3,5 @@
 [2.1 Android IPC简介](2.1 Android IPC简介.md)
 
 [2.2 Android中的多进程模式](2.2 Android中的多进程模式.md)
+
+[2.3 IPC基础概念介绍](2.3 IPC基础概念介绍.md)
