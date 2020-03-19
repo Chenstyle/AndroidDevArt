@@ -7,3 +7,7 @@
 [2.3 IPC基础概念介绍](2.3 IPC基础概念介绍.md)
 
 [2.4 Android中的IPC方式](Android中的IPC方式.md)
+
+[2.5 Binder连接池](2.5 Binder连接池.md)
+
+[2.6 选用合适的IPC方式](2.6 选用合适的IPC方式.md)
