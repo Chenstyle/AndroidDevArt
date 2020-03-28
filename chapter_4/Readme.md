@@ -6,3 +6,5 @@
 onAttach、onVisibilityChanged、onDetach等。另外对于一些具有滑动效果的自定义View，我们还需要处理View的滑动，如果遇到滑动冲突就还需要解决相应的滑动冲突，关于滑动和滑动冲突这一块内容已经在第3章中进行了全面介绍。自定义View的实现看起来很复杂，实际上说简单也简单。总结来说，自定义View是有几种固定类型的，有的是要选择最适合当前需要的方式，选对自定义View的实现方式可以起到事半功倍的效果，下面就围绕着这些话题一一展开。
 
 [4.1 初识ViewRoot和DecorView](4.1 初识ViewRoot和DecorView.md)
+
+[4.2 理解MeasureSpec](理解MeasureSpec.md)
