@@ -8,3 +8,5 @@ onAttach、onVisibilityChanged、onDetach等。另外对于一些具有滑动效
 [4.1 初识ViewRoot和DecorView](4.1-初识ViewRoot和DecorView.md)
 
 [4.2 理解MeasureSpec](4.2-理解MeasureSpec.md)
+
+[4.3 View的工作流程](4.3-View的工作流程.md)
