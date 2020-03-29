@@ -10,3 +10,5 @@ onAttach、onVisibilityChanged、onDetach等。另外对于一些具有滑动效
 [4.2 理解MeasureSpec](4.2-理解MeasureSpec.md)
 
 [4.3 View的工作流程](4.3-View的工作流程.md)
+
+[4.4 自定义View](4.4-自定义View.md)
