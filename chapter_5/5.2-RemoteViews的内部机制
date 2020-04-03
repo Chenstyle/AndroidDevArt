@@ -1,0 +1,235 @@
+### 5.2 RemoteViews的内部机制
+
+RemoteViews的作用是在其他进程中显示并更新View界面，为了更好地理解它的内部机制，我们先来看一下它的主要功能。首先看一下它的构造方法，这里只介绍一个最常用的构造方法：public RemoteViews(String packageName, int layoutId)，它接受两个参数，第一个表示当前应用的包名，第二个参数表示待加载的布局文件，这个很好理解。RemoteViews目前并不能支持所有的View类型，它所支持的所有类型如下：
+
+**Layout**
+
+FrameLayout、LinarLayout、RelativeLayout、GridLayout。
+
+**View**
+
+AnalogClock、Button、Chronometer、ImageButton、ImageView、ProgressBar、TextView、ViewFlipper、ListView、GridView、StackView、AdapterViewFlipper、ViewStub。
+
+上面所描述的是RemoteViews所支持的所有的View类型，RemoteViews不支持它们的子类以及其他View类型，也就是说RemoteViews中不能使用除了上述列表意外的View，也无法只用自定义View。比如如果我们在通知栏的RemoteViews中使用系统的EditText，那么通知栏消息将无法弹出并且会抛出如下异常。
+
+```log
+E/StatusBar(765): couldn't inflate view for notification com.chenstyle.chapter_5/0x2
+E/StatusBar(765): android.view.InflateException: Binary XML file line #25: Error inflating class android.widget.EditText
+E/StatusBar(765): Caused by: android.view.InflatedException: Binary XML file line #25: Class not allowed to be inflated android.widget.EditText
+E/StatusBar(765):   at android.view.LayoutInflater.failNotAllowed(LayoutInflater.java:695)
+E/StatusBar(765):   at android.view.LayoutInflater.createView(LayoutInflater.java:628)
+E/StatusBar(765):   ...21 more
+```
+
+上面的异常信息很明确，android.widget.EditText不允许在RemoteViews中使用。
+
+RemoteViews没有提供findViewById方法，因此无法直接访问里面的View元素，而必须通过RemoteViews所提供的一系列set方法来完成，当然这是因为RemoteViews在远程进程中显示，所以没办法直接findViewById。表5-2列举了部分常用的set方法，更多方法请查看相关资料。
+
+> 表5-2 RemoteViews的部分set方法
+
+方法名 | 作用
+--- | ---
+setTextViewText(int viewId, CharSquence text) | 设置TextView的文本
+setTextViewTextSize(int viewId, int units, float size) | 设置TextView的字体大小
+setTextColor(int viewId, int color) | 设置TextView的字体颜色
+setImageViewResource(int viewId, int srcId) | 设置ImageView的图片资源
+setImageViewResource | 设置ImageView的图片
+setInt(int viewId, String methodName, int value) | 反射调用View对象的参数类型为int的方法
+setLong(int viewId, String methodName, long value) | 反射调用View对象的参数类型为long的方法
+setBoolean(int viewId, String methodName, boolean value) | 反射调用View的对象的参数为boolean的方法
+setOnClickPendingIntent(int viewId, PendingIntent pendingIntent) | 为View添加单击事件，事件类型只能为PendingIntent
+
+从表5-2中可以看出，原本可以直接调用的View的方法，现在却必须要通过RemoteViews的一系列set方法才能完成，而且从方法的声明上来看，很像是通过反射来完成的，事实上大部分set方法的确是通过反射来完成的。
+
+下面描述一下RemoteViews的内部机制，由于RemoteViews主要用于通知栏和桌面小部件之中，这里就通过它们来分析RemoteViews的工作过程。我们知道，通知栏和桌面小部件分别由NotificationManager和AppWidgetManager管理，而NotificationManager和AppWidgetManager通过Binder分别和SystemServer进程中的NotificationManagerService以及AppWidgetService进行通信。由此可见，通知栏和桌面小部件中的布局文件实际上是在NotificationManagerService以及AppWidgetService中被加载的，而他们运行在系统的SystemServer中，这就和我们的进程构成了跨进程的通信场景。
+
+首先RemoteViews会通过Binder传递到SystemServer进程，这是因为RemoteViews实现了Parcelable接口，因此它可以跨进程传输，系统会根据RemoteViews中的包名等信息去得到该应用的资源。然后会通过LayoutInflater去加载RemoteViews中的布局文件。在SystemServer进程中加载后的布局文件是一个普通的View，只不过相对于我们的进程它是一个RemoteViews而已。接着系统会对View执行一系列界面更新任务，这些任务就是之前我们通过set方法来提交的。set方法对View所做的更新并不是立刻执行的，在RemoteViews内部会记录所有的更新操作，具体的执行时机要等到RemoteViews被加载以后才能执行，这样RemoteViews就可以在SystemServer进程中显示了，这就是我们所看到的同时兰消息或者桌面小部件。当需要更新RemoteViews时，我们需要调用一系列set方法并通过NotificationManager和AppWidgetManager来提交更新任务，具体的更新操作也是在SystemServer进程中完成的。
+
+从理论上来说，系统完全可以通过Binder去支持所有的View和View操作，但是这样做的话代价太大，因为View的方法太多了，另外就是大量的IPC操作会影响效率。为了解决这个问题，系统并没有通过Binder去直接支持View的跨进程访问，而是提供了一个Action的概念，Action代表一个View操作，Action同样实现了Parcelable接口。系统首先将View操作封装到Action对象并将这些对象跨进程传输到远程进程，接着再远程进程中执行Action对象中的具体操作。在我们的应用中每调用一次set方法，RemoteViews中就会添加一个对应的Action对象，当我们通过NotificationManager和AppWidgetManager来提交我们的更新时，这些Action对象就会传输到远程进程并在远程进程中依次执行，这个过程可以参看图5-3。远程进程通过RemoteViews的apply方法来进行View的更新操作，RemoteViews的apply方法内部则会去遍历所有的Action对象并调它们的apply方法，具体的View更新操作是由Action对象的apply方法来完成的。上述做法的好处是显而易见的，首先不需要定义大量的Binder接口，其次通过在远程进程中批量执行RemoteViews的修改操作从而避免了大量的IPC操作，这就提高了程序的性能，由此可见，Android系统在这方面的设计的确很精妙。
+
+![图5-3 RemoteViews的内部机制.jpg](https://i.loli.net/2020/04/03/sh2LwHm4VxoYNfa.jpg)
+
+上面从理论上分析了RemoteViews的内部机制，接下来我们从源码的角度再来分析RemoteViews的工作流程。它的构造方法就不用多说了，这么我们首先看一下它提供的一系列set方法，比如setTextViewText方法，其源码如下所示。
+
+```Java
+public void setTextViewText(int viewId, CharSequence text) {
+    setCharSequence(viewId, "setText", text);
+}
+```
+
+在上面的代码中，viewId是被操作的View的id，“setText"是方法名，text是要给TextView设置的文本，这里可以联想一下TextView的setText方法，是不是很一致呢？接着再看setCharSequence的实现，如下所示。
+
+```Java
+public void setCharSequence(int viewId, String methodName, CharSequence value) {
+    addAction(new ReflectionAction(viewId, methodName, ReflectionAction.CHAR_SEQUENCE, value));
+}
+```
+
+从setCharSequence的实现可以看出，它的内部并没有对View进程直接的操作，而是添加了一个ReflectionAction对象，从名字来看，这应该是一个反射类型的动作。再看addAction的实现，如下所示。
+
+```Java
+private void addAction(Action a) {
+    ...
+    if (mAction == null) {
+        mAction = new ArrayList<Action>();
+    }
+    mAction.add(a);
+    // update the memory usage stats
+    a.updateMemoryUsageEstimate(mMemoryUsageCounter);
+}
+```
+
+从上述代码可以知道，RemoteViews内部有一个mActions成员，它是一个ArrayList，外界每调用一次set方法，RemoteViews就会为其创建一个Action对象并加入到这个ArrayList中。需要注意的是，这里仅仅是将Action对象保存起来了，并未对View进行实际的操作，这一点在上面的理论分析中已经提到过了。到这里setTextViewText这个方法的源码已经分析完了，但是我们好像还是什么都不知道的感觉，没关系，接着我们需要看一下这个ReflectionAction的实现就知道了。在看它的实现之前，我们需要先看一下RemoteViews的apply方法以及Action类的实现，首先看一下RemoteViews的apply方法，如下所示。
+
+```Java
+public View apply(Context context, ViewGroup parent, onClickHandler handler) {
+    RemoteViews rvToApply getRemoteViewsToApply(context);
+    
+    View result;
+    ...
+    
+    LayoutInflater inflater = (LayoutInflater)context.getSystemService(Context.LAYOUT_INFLATER_SERVICE);
+    
+    // Clone inflater so we load resources from correct context and
+    // we don't add a filter to the static version returned by getSystemService.
+    inflater = inflater.cloneInContext(inflationContext);
+    inflater.setFilter(this);
+    result = inflater.inflate(rvToApply.getLayoutId(), parent, false);
+    
+    rvToApply.performApply(result, parent, handler);
+    
+    return result;
+}
+```
+
+从上面的代码可以看出，首先会通过LayoutInflater去加载RemoteViews中的布局文件，RemoteViews中的布局文件可以通过getLayoutId这个方法获得，加载完布局文件后会通过performApply去执行一些更新操作，代码如下所示。
+
+```Java
+private void performApply(View v, ViewGroup parent, OnClickHandler handler) {
+    if (mActions != null) {
+        handler = handler == null ? DEFAULT_ON_CLICK_HANDLER : handler;
+        final int count = mActions.size();
+        for (int i = 0; i < count; i++) {
+            Action a = mActions.get(i);
+            a.apply(v, parent, handler);
+        }
+    }
+}
+```
+
+performApply的实现就比较好理解了，它的作用就是遍历mActions这个列表并执行每个Action对象的apply方法。还记得mAction吗？每一次的set操作都会对应着它里面的一个Action对象，因此我们可以断定，Action对象的apply方法就是真正操作View的地方，实际上的确如此。
+
+RemoteViews在通知栏和桌面小部件中的工作过程和上面描述的过程是一致的，当我们调用RemoteViews的set方法时，并不会立刻更新它们的界面，而必须要通过NotificationManager的notify方法以及AppWidgetManager的updateAppWidget的内部实现中，它们的确是通过RemoteViews的apply以及reapply方法来加载或者更新界面的，apply和reApply的区别在于：apply会加载布局并更新界面，而reApply则只会更新界面。通知栏和桌面小插件在初始化界面时会调用apply方法，而在后续的更新界面时则会调用reapply方法。这里先看一下BaseStatusBar的updateNotificationViews方法中，如下所示。
+
+```Java
+private void updateNotificationViews(NotificationData.Entry entry, StatusBarNotification notification, boolean isHandsUp) {
+    final RemoteViews contentViews = notification.getNotification().contentView;
+    final RemoteViews bigContentView = isHandsUp ? notification.getNotification().headsUpContentView : notification.getNotification().bigCOntentView;
+    final Notification publicVersion = notification.getNotification().publicVersion;
+    final RemoteViews publicContentView = publicVersion != null ? publicVersion.contentView : null;
+    
+    // Reapply the RemoteViews
+    contentView.reapply(mContext, entry.expanded, mOnClickHandler);
+    ...
+}
+```
+
+很显然，上述代码表示当通知栏界面需要更新时，它会通过RemoteViews的reapply方法来更新界面。
+
+接着再看一下AppWidgetHostView的updateAppWidget方法，在它的内部有如下一段代码：
+
+```Java
+mRemoteContext = getRemoteContext();
+int layoutId = remoteViews.getLayoutId();
+
+// If our stale view has been prepared to match active, and the new
+// layout matches, try recycling it
+if (content == null && layoutId == mLayoutId) {
+    try {
+        remoteViews.reapply(mContext, mView, mOnClickHandler);
+        content = mView;
+        recycled = true;
+        if (LOGD) Log.d(TAG, "was able to recycled existing layout");
+    } catch (RuntimeException e) {
+        exception = e;
+    }
+}
+
+// Try normal RemoteView inflation
+if (content == null) {
+    try {
+        content = remoteViews.apply(mContext, this, mOnClickHandler);
+        if (LOGD) Log.d(TAG, "had to inflate new layout");
+    } catch (RuntimeException e) {
+        exception = e;
+    }
+}
+```
+
+从上述代码可以发现，桌面小部件在更新界面时也是通过RemoteViews的reapply方法来实现的。
+
+了解了apply以及reapply的作用以后，我们再继续看一些Action的子类的具体实现，首先看一下RefectionAction的具体实现，它的源码如下所示。
+
+```Java
+private final class ReflectionAction extends Action {
+    ReflectionAction(int viewId, String methodName, int type, Object value) {
+        this.valueId = viewId;
+        this.methodName = methodName;
+        this.type = type;
+        this.value = value;
+    }
+    
+    ...
+    @Override
+    public void apply(View root, ViewGroup rootParent, OnClickHandler handler) {
+        final View view = root.findViewById(viewId);
+        if (view == null) return;
+        
+        Class<?> param = getParameterType();
+        if (param == null) {
+            throw new ActionException("bad type: " + this.type);
+        }
+        
+        try {
+            getMethod(view, this.methodName, param).invoke(view, wrapArg(this.value));
+        } catch (ActionException e) {
+            throw e;
+        } catch (Exception ex) {
+            throw new ActionException(ex);
+        }
+    }
+}
+```
+
+通过上述代码可以发现，RefectionAction表示的是一个反射动作，通过它对View的操作会以反射的方式来调用，其中getMethod就是根据方法名来得到反射所需要的Method对象。使用Reflection的set方法有：setTextViewText、setBoolean、setLong、setDouble等。除了ReflectionAction，还有其他Action，比如TextViewSizeAction、ViewPaddingAction、setOnClickPendingIntent等。这里再分析一下TextViewSizeAction，它的实现如下所示。
+
+```Java
+private class TextViewSizeAction extends Action {
+    public TextViewSizeAction(int viewId, int units, float size) {
+        this.viewId = viewId;
+        this.units = units;
+        this.size = size;
+    }
+    ...
+    
+    @Override
+    public void apply(View root, ViewGroup rootParent, OnClickHandler handler) {
+        final TextView target = (TextView) root.findViewById(viewId);
+        if (target == null) return;
+        target.setTextSize(units, size);
+    }
+    
+    public String getActionName() {
+        return "TextViewSizeAction";
+    }
+    
+    int units;
+    float size;
+    
+    public final static int TAG = 13;
+}
+```
+
+TextViewSizeAction的实现比较简单，它之所以不用反射来实现，是因为setTextSize这个方法有2个参数，因此无法复用ReflectionAction，因为ReflectionAction的反射调用只有一个参数。其他Action这里就不一一进行分析了，读者可以查看RemoteViews的源代码。
+
+关于单击事件，RemoteViews中只支持发起PendingIntent，不支持onClickListener那种模式。另外，我们需要注意setOnClickPendingIntent、setPendingIntentTemplate以及setOnClickFillInIntent它们之间的区别和联系。首先setOnClickPendingIntent用于给普通View设置单击事件，但是不能给集合（ListView和StackView）中的View设置单击事件，因为开销比较大，所以系统禁止了这种方式；其次，如果要给ListView和StackView中的item添加单击事件，则必须将setPendingIntentTemplate和setOnClickFillInIntent组合使用才可以。
