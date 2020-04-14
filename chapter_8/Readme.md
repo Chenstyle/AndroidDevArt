@@ -1,0 +1,9 @@
+## 第8章 理解Window和WindowManager
+
+Window表示一个窗口的概念，在日常开发中直接接触Window的机会并不多，但是在某些特殊时候我们需要在桌面上显示一个类似悬浮窗的东西，那么这种效果就需要用到Window来实现。Window是一个抽象类，它的具体实现是PhoneWindow。创建一个Window是很简单的事，只需要通过WindowManager即可完成。WindowManager是外界访问Window的入口，Window的具体实现位于WindowManagerService中，WindowManager和WindowManagerService的交互是一个IPC过程。Android中所有的视图都是通过Window来呈现的，不管是Activity、Dialog还是Toast，它们的视图实际上都是附加在Window上的，因此Window实际是View的直接管理者。从第4章所讲述的View的事件分发机制也可以知道，单击事件由Window传递给DecorView，然后再由DecorView传递给我们的View，就连Activity的设置视图的方法setContentView的底层也是通过Window来完成的。
+
+[8.1 Window和WindowManager](8.1-Window和WindowManager.md)
+
+[8.2 Window的内部机制](8.2-Window的内部机制.md)
+
+[8.3 Window的创建过程](8.3-Window的创建过程.md)
