@@ -6,6 +6,6 @@ Android的消息机制主要是指Handler的运行机制，Handler的运行需�
 
 [10.1 Android的消息机制概述](10.1-Android的消息机制概述.md)
 
-[10.2 Android的消息机制分析](10.2-Androdi的消息机制分析.md)
+[10.2 Android的消息机制分析](10.2-Android的消息机制分析.md)
 
 [10.3 主线程的消息循环](10.3-主线程的消息循环.md)
