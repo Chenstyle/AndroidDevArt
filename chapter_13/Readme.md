@@ -12,7 +12,7 @@
 
 [13.1 使用CrashHandler来获取应用的crash信息](13.1-使用CrashHandler来获取应用的crash信息.md)
 
-[13.2 使用multidex来解决方法数越界](13.2-使用multidex来解决方法数越界,md)
+[13.2 使用multidex来解决方法数越界](13.2-使用multidex来解决方法数越界.md)
 
 [13.3 Android的动态加载技术](13.3-Android的动态加载技术.md)
 
